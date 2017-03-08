@@ -1,0 +1,183 @@
+---
+title: "STA221"
+author: "Neil Montgomery"
+date: "Last edited: `r format(Sys.time(), '%Y-%m-%d %H:%M')`"
+output: 
+  beamer_presentation:
+    keep_tex: TRUE
+    incremental: TRUE
+#    df_print: tibble
+    fig_caption: FALSE
+classoption: aspectratio=169
+header-includes:
+- \newcommand{\ve}{\varepsilon}
+- \newcommand{\dbar}[1]{\overline{\overline{#1}}}
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE,
+                      dev='pdf', fig.width=5, fig.asp=0.618, fig.align='center')
+options(tibble.width=70, scipen = 999, tibble.print_min=5, show.signif.stars = FALSE)
+library(tidyverse)
+library(readxl)
+```
+
+
+
+## pairwise comparisons
+
+
+\pause A pairwise comparison will be a pooled two-sample $t$ procedures, using the overall $MSE$ in place of the usual pooled variance:
+$$\frac{\overline{y}_i - \overline{y}_j}{\sqrt{MSE}\sqrt{\frac{1}{n_i} + \frac{1}{n_j}}} \sim t_{N-k}$$
+The usual technique is to produce confidence intervals for each desired pair.
+
+\pause We will adjust the confidence level $100\cdot(1-\alpha)\%$ when multiple comparisons take place.
+
+\pause Recall: a lower $\alpha$ gives a \textit{wider} confidence interval. In the $t$ case the full formula is:
+$$(\overline{y}_i - \overline{y}_j) \pm t_{N-k, \alpha/2} \sqrt{MSE}\sqrt{\frac{1}{n_i} + \frac{1}{n_j}}$$
+
+## if you torture your data long enough, it will tell you anything
+
+From "classical" hypothesis testing there was the notion of a "Type I Error", which is \textit{rejecting $H_0$ when it is true}, aka "false positive". 
+
+\pause The probability of a Type I Error is often called $\alpha$ and is set to be something low like $0.05$. This is also called the "level" of the test.
+
+\pause When you subject one dataset to multiple hypothesis tests at the same "level" $\alpha$, you are exposing yourself to that $\alpha$ probability over and over again.
+
+\pause Also, all the different hypothesis tests are usually not independent, so calculating the overall effect of multiple hypothesis tests is usually impossible.
+
+\pause But, it is possible to put an \textit{upper bound} on the overall effect.
+
+\pause Definition: the \textit{experimentwise error rate} is the probability of \textit{any} Type I Errors among all tests done on the dataset from one experiment.
+
+## bounding the experimentwise error rate - I
+
+Suppose we're going to do $m$ hypothesis tests on a dataset.
+
+Denote by $A_1, A_2, \ldots, A_m$ the events where $A_i$ means "a Type I Error occurred when hypothesis test $i$ took place", and $P(A_i)=\alpha$.
+
+\pause The goal is to put one overall upper bound on the experimentwise error rate, which we'll call $\alpha^*$.
+
+\pause You might recall the expression $P(A \cup B) = P(A) + P(B) - P(A \cap B)$. 
+
+\pause This implies $P(A \cup B) \le P(A) + P(B)$. You can extend this to any number of events, i.e.:
+$$P(A_1 \cup A_2 \cup \cdots \cup A_m) \le P(A_1) + P(A_2) + \cdots + P(A_m)$$
+
+## bounding the experimentwise error rate - II
+
+How could the individual tests all be adjusted so that $\alpha^* = \alpha$?
+
+An easy method uses:
+
+\begin{align*}
+\alpha^* &= P(\text{any Type I Errors})\\
+\onslide<2->{&=P(A_1\cup A_2\cup \cdots A_m)}\\
+\onslide<3->{&\le P(A_1) + P(A_2) + \cdots + P(A_m)}\\
+\end{align*}
+
+\pause\pause\pause So can achieve $\alpha^* = \alpha$ simply by dividing each of these $\alpha$ by $m$.
+
+\pause This is called a "Bonferroni correction". 
+
+\pause It's not a bad idea to apply a Bonferroni correct to any situation in which you are subjecting a dataset to lots of hypothesis tests.
+
+## full example, including some pairwise comparisons
+
+```{r}
+library(tidyverse)
+library(rio)
+hearing <- import("Ch25_Hearing.xls")
+hearing$ListID <- factor(hearing$ListID)
+
+```
+
+From the "Hearing" example there were four lists of words and 96 people. The \% of words understood by each person was recorded.
+
+\pause Suppose `List4` was some sort of "default list", and the other three lists were new word lists being evaluated. So it will be particularly interesting to investigate these three pairwise differences:
+\begin{align*}
+\mu_1 &- \mu_4\\
+\mu_2 &- \mu_4\\
+\mu_3 &- \mu_4
+\end{align*}
+
+\pause We will fix the experimentwise error rate at $\alpha = 0.05$ for the multiple comparisons.
+
+## hearing full example - I
+
+First, look at a plot:
+
+```{r}
+hearing %>% 
+  ggplot(aes(x=ListID, y=Hearing)) + geom_boxplot()
+```
+
+## hearing full example - II
+
+Next, verify the model assumptions starting with Levene's test:
+```{r}
+hearing %>% 
+  car::leveneTest(Hearing ~ ListID, data=.)
+```
+\pause ...followed by the normal quantile plot of the residuals:
+```{r, fig.width=2.5, fig.align='center'}
+hearing_fit <- hearing %>% 
+  aov(Hearing ~ ListID, data = .)
+library(broom)
+
+hearing_fit %>% 
+  augment %>% ggplot(aes(sample = .resid)) + geom_qq()
+```
+
+## hearing full example - III
+
+Next we do the overall ANOVA $F$ test:
+
+```{r}
+summary(hearing_fit)
+```
+
+\pause And since the p-value is low \textbf{we may proceed with the pairwise comparisons.}
+
+## hearing full example - IV
+
+\pause To make the three confidence intervals we need the estimated mean differences and the group sample sizes:
+```{r}
+(means <- hearing %>% 
+  group_by(ListID) %>% 
+  summarize(n=n(), mean=mean(Hearing)))
+alpha_adj <- 0.05/3
+alpha_adj_disp <- round(alpha_adj, 4)
+```
+
+We are doing three comparisons at an experimentwise error rate of $0.05$, so we'll produce the $(1-0.05/3)\cdot 100\% = `r round((1-alpha_adj)*100, 2)`\%$ confidence intervals.
+
+\pause The value of $t_{92, `r alpha_adj_disp`}$ is `r (t_adj <- -qt(alpha_adj, 92))`.
+
+## hearing full example - V
+
+The three pairwise comparisons of interest can be made using these confidence intervals:
+
+```{r}
+diff14 <- means$mean[1] - means$mean[4]
+diff24 <- means$mean[2] - means$mean[4]
+diff34 <- means$mean[3] - means$mean[4]
+me <- t_adj*glance(hearing_fit)$sigma*sqrt(1/means$n[1] + 1/means$n[2])
+options(digits=3)
+```
+
+\begin{table}[ht]
+\begin{tabular}{lrrrr}
+Comparison & Estimate & Margin of Error & Lower & Upper\\
+$\mu_1 - \mu_4$ & `r diff14` & `r me` & `r diff14 - me` & `r diff14 + me`\\
+$\mu_2 - \mu_4$ & `r diff24` & `r me` & `r diff24 - me` & `r diff24 + me`\\
+$\mu_3 - \mu_4$ & `r diff34` & `r me` & `r diff34 - me` & `r diff34 + me`
+\end{tabular}
+\end{table}
+
+## post-hoc comparison trick
+
+Dangerous territory: perform a comparison \textit{after looking at the data}.
+
+\pause Trick: use Bonferroni's correction \textit{assuming you were going to look at all the comparisons in advance.}
+
+\pause With $k$ groups there will be $k(k-1)/2$ such comparisons.
